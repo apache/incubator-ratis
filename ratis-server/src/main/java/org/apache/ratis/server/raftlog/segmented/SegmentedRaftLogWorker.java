@@ -41,6 +41,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.LinkedList;
 import java.util.Objects;
 import java.util.Optional;
@@ -49,6 +50,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
+
+import org.apache.ratis.retry.IORetryPolicy;
 
 /**
  * This class takes the responsibility of all the raft log related I/O ops for a
@@ -350,7 +357,7 @@ class SegmentedRaftLogWorker implements Runnable {
           stateMachineDataPolicy.getFromFuture(f, () -> this + "-flushStateMachineData");
         }
         final Timer.Context logSyncTimerContext = raftLogSyncTimer.time();
-        out.flush();
+        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{out.flush();});
         logSyncTimerContext.stop();
         if (!stateMachineDataPolicy.isSync()) {
           IOUtils.getFromFuture(f, () -> this + "-flushStateMachineData");
@@ -421,7 +428,9 @@ class SegmentedRaftLogWorker implements Runnable {
         for (SegmentFileInfo fileInfo : segments.toDelete) {
           File delFile = storage.getStorageDir()
                   .getClosedLogFile(fileInfo.startIndex, fileInfo.endIndex);
-          FileUtils.deleteFile(delFile);
+          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+            FileUtils.deleteFile(delFile);
+          });
         }
       }
     }
@@ -486,7 +495,7 @@ class SegmentedRaftLogWorker implements Runnable {
       Preconditions.assertTrue(out != null);
       Preconditions.assertTrue(lastWrittenIndex + 1 == entry.getIndex(),
           "lastWrittenIndex == %s, entry == %s", lastWrittenIndex, entry);
-      out.write(entry);
+      Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{out.write(entry);});
       lastWrittenIndex = entry.getIndex();
       pendingFlushNum++;
       if (shouldFlush()) {
@@ -529,10 +538,14 @@ class SegmentedRaftLogWorker implements Runnable {
         File dstFile = storage.getStorageDir().getClosedLogFile(startIndex, endIndex);
         Preconditions.assertTrue(!dstFile.exists());
 
-        FileUtils.move(openFile, dstFile);
+        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+          FileUtils.move(openFile, dstFile);
+        });
         LOG.info("{}: Rolled log segment from {} to {}", name, openFile, dstFile);
       } else { // delete the file of the empty segment
-        FileUtils.deleteFile(openFile);
+        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+          FileUtils.deleteFile(openFile);
+        });
         LOG.info("{}: Deleted empty log segment {}", name, openFile);
       }
       updateFlushedIndexIncreasingly();
@@ -566,12 +579,18 @@ class SegmentedRaftLogWorker implements Runnable {
     @Override
     void execute() throws IOException {
       File openFile = storage.getStorageDir().getOpenLogFile(newStartIndex);
-      Preconditions.assertTrue(!openFile.exists(), "open file %s exists for %s",
+      boolean exists = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
+        return(openFile.exists());
+      });
+      Preconditions.assertTrue(!exists, "open file %s exists for %s",
           openFile, name);
       Preconditions.assertTrue(out == null && pendingFlushNum == 0);
       out = new SegmentedRaftLogOutputStream(openFile, false, segmentMaxSize,
           preallocatedSize, bufferSize);
-      Preconditions.assertTrue(openFile.exists(), "Failed to create file %s for %s",
+      exists = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
+        return(openFile.exists());
+      });
+      Preconditions.assertTrue(exists, "Failed to create file %s for %s",
           openFile.getAbsolutePath(), name);
       LOG.info("{}: created new log segment {}", name, openFile);
     }
@@ -608,16 +627,25 @@ class SegmentedRaftLogWorker implements Runnable {
             storage.getStorageDir().getClosedLogFile(
                 segments.toTruncate.startIndex,
                 segments.toTruncate.endIndex);
-        Preconditions.assertTrue(fileToTruncate.exists(),
+        boolean exists = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
+          return(fileToTruncate.exists());
+        });
+        Preconditions.assertTrue(exists,
             "File %s to be truncated does not exist", fileToTruncate);
-        FileUtils.truncateFile(fileToTruncate, segments.toTruncate.targetLength);
-
+        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+          FileUtils.truncateFile(fileToTruncate, segments.toTruncate.targetLength);
+        });
         // rename the file
         File dstFile = storage.getStorageDir().getClosedLogFile(
             segments.toTruncate.startIndex, segments.toTruncate.newEndIndex);
-        Preconditions.assertTrue(!dstFile.exists(),
+        exists = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
+          return(dstFile.exists());
+        });
+        Preconditions.assertTrue(exists,
             "Truncated file %s already exists ", dstFile);
-        FileUtils.move(fileToTruncate, dstFile);
+        Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+          FileUtils.move(fileToTruncate, dstFile);
+        });
         LOG.info("{}: Truncated log file {} to length {} and moved it to {}", name,
             fileToTruncate, segments.toTruncate.targetLength, dstFile);
 
@@ -634,9 +662,14 @@ class SegmentedRaftLogWorker implements Runnable {
             delFile = storage.getStorageDir()
                 .getClosedLogFile(del.startIndex, del.endIndex);
           }
-          Preconditions.assertTrue(delFile.exists(),
+          boolean exists = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Boolean>)()->{
+            return(delFile.exists());
+          });
+          Preconditions.assertTrue(exists,
               "File %s to be deleted does not exist", delFile);
-          FileUtils.deleteFile(delFile);
+          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+            FileUtils.deleteFile(delFile);
+          });
           LOG.info("{}: Deleted log file {}", name, delFile);
           minStart = Math.min(minStart, del.startIndex);
         }

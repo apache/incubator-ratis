@@ -17,7 +17,6 @@
  */
 package org.apache.ratis.util;
 
-import org.apache.ratis.util.function.CheckedSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,31 +26,24 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.function.Supplier;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.function.CheckedRunnable;
+
+import org.apache.ratis.retry.IORetryPolicy;
 
 public interface FileUtils {
   Logger LOG = LoggerFactory.getLogger(FileUtils.class);
 
-  int NUM_ATTEMPTS = 5;
-  TimeDuration SLEEP_TIME = TimeDuration.ONE_SECOND;
-
-  static <T> T attempt(CheckedSupplier<T, IOException> op, Supplier<?> name) throws IOException {
-    try {
-      return JavaUtils.attempt(op, NUM_ATTEMPTS, SLEEP_TIME, name, LOG);
-    } catch (InterruptedException e) {
-      throw IOUtils.toInterruptedIOException("Interrupted " + name.get(), e);
-    }
-  }
-
   static void truncateFile(File f, long target) throws IOException {
-    final long original = f.length();
-    LogUtils.runAndLog(LOG,
-        () -> {
-          try (FileOutputStream out = new FileOutputStream(f, true)) {
-            out.getChannel().truncate(target);
-          }
-        },
-        () -> "FileOutputStream.getChannel().truncate " + f + " length: " + original + " -> " + target);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      final long original = f.length();
+      LogUtils.runAndLog(LOG,
+          () -> {
+            try (FileOutputStream out = new FileOutputStream(f, true)) {
+              out.getChannel().truncate(target);
+            }},
+          () -> "FileOutputStream.getChannel().truncate " + f + " length: " + original + " -> " + target);
+    });
   }
 
   static OutputStream createNewFile(Path p) throws IOException {
@@ -65,9 +57,11 @@ public interface FileUtils {
   }
 
   static void createDirectories(Path dir) throws IOException {
-    LogUtils.runAndLog(LOG,
-        () -> Files.createDirectories(dir),
-        () -> "Files.createDirectories " + dir);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      LogUtils.runAndLog(LOG,
+          () -> Files.createDirectories(dir),
+          () -> "Files.createDirectories " + dir);
+    });
   }
 
   static void move(File src, File dst) throws IOException {
@@ -75,9 +69,11 @@ public interface FileUtils {
   }
 
   static void move(Path src, Path dst) throws IOException {
-    LogUtils.runAndLog(LOG,
-        () -> Files.move(src, dst),
-        () -> "Files.move " + src + " to " + dst);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      LogUtils.runAndLog(LOG,
+          () -> Files.move(src, dst),
+          () -> "Files.move " + src + " to " + dst);
+    });
   }
 
   /** The same as passing f.toPath() to {@link #delete(Path)}. */
@@ -100,9 +96,11 @@ public interface FileUtils {
    * This method may print log messages using {@link #LOG}.
    */
   static void delete(Path p) throws IOException {
-    LogUtils.runAndLog(LOG,
-        () -> Files.delete(p),
-        () -> "Files.delete " + p);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      LogUtils.runAndLog(LOG,
+          () -> Files.delete(p),
+          () -> "Files.delete " + p);
+    });
   }
 
   /** The same as passing f.toPath() to {@link #deleteFully(Path)}. */
@@ -122,26 +120,28 @@ public interface FileUtils {
    * (3) If it is a symlink, the symlink will be deleted but the symlink target will not be deleted.
    */
   static void deleteFully(Path p) throws IOException {
-    if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {
-      LOG.trace("deleteFully: {} does not exist.", p);
-      return;
-    }
-    Files.walkFileTree(p, new SimpleFileVisitor<Path>() {
-      @Override
-      public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        delete(file);
-        return FileVisitResult.CONTINUE;
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      if (!Files.exists(p, LinkOption.NOFOLLOW_LINKS)) {
+        LOG.trace("deleteFully: {} does not exist.", p);
+        return;
       }
-
-      @Override
-      public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
-        if (e != null) {
-          // directory iteration failed
-          throw e;
+      Files.walkFileTree(p, new SimpleFileVisitor<Path>() {
+        @Override
+        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+          delete(file);
+          return FileVisitResult.CONTINUE;
         }
-        delete(dir);
-        return FileVisitResult.CONTINUE;
-      }
+
+        @Override
+        public FileVisitResult postVisitDirectory(Path dir, IOException e) throws IOException {
+          if (e != null) {
+            // directory iteration failed
+            throw e;
+          }
+          delete(dir);
+          return FileVisitResult.CONTINUE;
+        }
+      });
     });
   }
 }

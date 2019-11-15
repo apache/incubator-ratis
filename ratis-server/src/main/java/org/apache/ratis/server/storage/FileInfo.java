@@ -20,6 +20,10 @@ package org.apache.ratis.server.storage;
 import java.nio.file.Path;
 
 import org.apache.ratis.io.MD5Hash;
+import org.apache.ratis.retry.IORetryPolicy;
+
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.function.CheckedSupplier;
 
 /**
  * Metadata about a file.
@@ -34,7 +38,8 @@ public class FileInfo {
   public FileInfo(Path path, MD5Hash fileDigest) {
     this.path = path;
     this.fileDigest = fileDigest;
-    this.fileSize = path.toFile().length();
+    this.fileSize = Failsafe.with(IORetryPolicy.retryPolicy).get((
+        CheckedSupplier<Long>)()->{return(path.toFile().length());});
   }
 
   @Override

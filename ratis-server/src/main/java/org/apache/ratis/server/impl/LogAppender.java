@@ -29,6 +29,12 @@ import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
 import org.apache.ratis.proto.RaftProtos.*;
 import org.apache.ratis.statemachine.SnapshotInfo;
 import org.apache.ratis.util.*;
+import org.apache.ratis.retry.IORetryPolicy;
+
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -346,8 +352,11 @@ public class LogAppender {
               currentFileSize - currentOffset);
           FileChunkProto chunk;
           try {
-            chunk = readFileChunk(currentFileInfo, in, currentBuf,
-                targetLength, currentOffset, chunkIndex);
+            chunk = Failsafe.with(IORetryPolicy.retryPolicy).get((
+                CheckedSupplier<FileChunkProto>)()->{
+                return(readFileChunk(currentFileInfo, in, currentBuf,
+                    targetLength, currentOffset, chunkIndex));
+                });
             boolean done = (fileIndex == files.size() - 1) &&
                 chunk.getDone();
             InstallSnapshotRequestProto request =
@@ -391,7 +400,10 @@ public class LogAppender {
       throws IOException {
     FileChunkProto.Builder builder = FileChunkProto.newBuilder()
         .setOffset(offset).setChunkIndex(chunkIndex);
-    IOUtils.readFully(in, buf, 0, length);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((
+        CheckedRunnable)()->{
+          IOUtils.readFully(in, buf, 0, length);
+        });
     Path relativePath = server.getState().getStorage().getStorageDir()
         .relativizeToRoot(fileInfo.getPath());
     builder.setFilename(relativePath.toString());

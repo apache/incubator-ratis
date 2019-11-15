@@ -20,7 +20,14 @@ package org.apache.ratis.util;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.FailsafeException;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
+
 import java.io.*;
+
+import org.apache.ratis.retry.IORetryPolicy;
 
 /**
  * A FileOutputStream that has the property that it will only show
@@ -56,29 +63,41 @@ public class AtomicFileOutputStream extends FilterOutputStream {
   public void close() throws IOException {
     boolean triedToClose = false, success = false;
     try {
-      flush();
-      ((FileOutputStream)out).getChannel().force(true);
-
+      // WARNING: We try a LOT more than 5 times for this function as each step is
+      // retried independently to keep the original code flow
+      Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+        flush();
+        ((FileOutputStream)out).getChannel().force(true);
+      });
       triedToClose = true;
-      super.close();
+      Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+        super.close();
+      });
       success = true;
     } finally {
       if (success) {
-        boolean renamed = tmpFile.renameTo(origFile);
+        boolean renamed = Failsafe.with(IORetryPolicy.booleanCheckingRetryPolicy).get((CheckedSupplier<Boolean>)()->{
+          return(tmpFile.renameTo(origFile));
+        });
         if (!renamed) {
           // On windows, renameTo does not replace.
-          if (origFile.exists() && !origFile.delete()) {
+          boolean exists = Failsafe.with(IORetryPolicy.booleanCheckingRetryPolicy).get((CheckedSupplier<Boolean>)(origFile::exists));
+          if (exists && !Failsafe.with(IORetryPolicy.booleanCheckingRetryPolicy).get((CheckedSupplier<Boolean>)(origFile::delete))) {
             throw new IOException("Could not delete original file " + origFile);
           }
-          FileUtils.move(tmpFile, origFile);
+          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+            FileUtils.move(tmpFile, origFile);
+          });
         }
       } else {
         if (!triedToClose) {
           // If we failed when flushing, try to close it to not leak an FD
-          IOUtils.cleanup(LOG, out);
+          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+            IOUtils.cleanup(LOG, out);
+          });
         }
         // close wasn't successful, try to delete the tmp file
-        if (!tmpFile.delete()) {
+        if (!Failsafe.with(IORetryPolicy.booleanCheckingRetryPolicy).get((CheckedSupplier<Boolean>)(tmpFile::delete))) {
           LOG.warn("Unable to delete tmp file " + tmpFile);
         }
       }
@@ -92,11 +111,11 @@ public class AtomicFileOutputStream extends FilterOutputStream {
    */
   public void abort() {
     try {
-      super.close();
-    } catch (IOException ioe) {
-      LOG.warn("Unable to abort file " + tmpFile, ioe);
+      Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)(super::close));
+    } catch (FailsafeException e) {
+      LOG.warn("Unable to abort file " + tmpFile, e);
     }
-    if (!tmpFile.delete()) {
+    if (!Failsafe.with(IORetryPolicy.booleanCheckingRetryPolicy).get((CheckedSupplier<Boolean>)(tmpFile::delete))) {
       LOG.warn("Unable to delete tmp file during abort " + tmpFile);
     }
   }

@@ -28,8 +28,14 @@ import org.apache.ratis.util.IOUtils;
 import org.apache.ratis.util.Preconditions;
 import org.apache.ratis.util.PureJavaCrc32C;
 import org.apache.ratis.util.StringUtils;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.FailsafeException;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.apache.ratis.retry.IORetryPolicy;
 
 import java.io.*;
 import java.util.zip.Checksum;
@@ -38,13 +44,15 @@ import com.codahale.metrics.Timer;
 
 class SegmentedRaftLogReader implements Closeable {
   static final Logger LOG = LoggerFactory.getLogger(SegmentedRaftLogReader.class);
+
   /**
    * InputStream wrapper that keeps track of the current stream position.
    *
    * This stream also allows us to set a limit on how many bytes we can read
-   * without getting an exception.
+   * without getting an exception and retries exceptions to avoid blocking progress.
    */
   static class LimitedInputStream extends FilterInputStream {
+
     private long curPos = 0;
     private long markPos = -1;
     private long limitPos = Long.MAX_VALUE;
@@ -64,7 +72,7 @@ class SegmentedRaftLogReader implements Closeable {
     @Override
     public int read() throws IOException {
       checkLimit(1);
-      int ret = super.read();
+      int ret = (Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)super::read));
       if (ret != -1) curPos++;
       return ret;
     }
@@ -72,7 +80,7 @@ class SegmentedRaftLogReader implements Closeable {
     @Override
     public int read(byte[] data) throws IOException {
       checkLimit(data.length);
-      int ret = super.read(data);
+      int ret = (Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)()->{return(super.read(data));}));
       if (ret > 0) curPos += ret;
       return ret;
     }
@@ -80,7 +88,7 @@ class SegmentedRaftLogReader implements Closeable {
     @Override
     public int read(byte[] data, int offset, int length) throws IOException {
       checkLimit(length);
-      int ret = super.read(data, offset, length);
+      int ret = (Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)()->{return(super.read(data, offset, length));}));
       if (ret > 0) curPos += ret;
       return ret;
     }
@@ -158,7 +166,9 @@ class SegmentedRaftLogReader implements Closeable {
    */
   boolean verifyHeader() throws IOException {
     final int headerLength = SegmentedRaftLogFormat.getHeaderLength();
-    final int readLength = in.read(temp, 0, headerLength);
+    final int readLength = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)()->{
+      return(in.read(temp, 0, headerLength));
+    });
     Preconditions.assertTrue(readLength <= headerLength);
     final int matchLength = SegmentedRaftLogFormat.matchHeader(temp, 0, readLength);
     Preconditions.assertTrue(matchLength <= readLength);
@@ -234,7 +244,9 @@ class SegmentedRaftLogReader implements Closeable {
     int numRead = -1, idx = 0;
     while (true) {
       try {
-        numRead = in.read(temp);
+        numRead = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)()->{
+          return(in.read(temp));
+        });
         if (numRead == -1) {
           return;
         }
@@ -249,9 +261,11 @@ class SegmentedRaftLogReader implements Closeable {
         // want to reposition the mark one byte before the error
         if (numRead != -1) {
           in.reset();
-          IOUtils.skipFully(in, idx);
+          // need a final index to read from the lambda
+          final int idx_f = idx;
+          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{IOUtils.skipFully(in, idx_f);});
           in.mark(temp.length + 1);
-          IOUtils.skipFully(in, 1);
+          Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{IOUtils.skipFully(in, 1);});
         }
       }
     }
@@ -272,10 +286,12 @@ class SegmentedRaftLogReader implements Closeable {
 
     byte nextByte;
     try {
-      nextByte = in.readByte();
-    } catch (EOFException eof) {
-      // EOF at an opcode boundary is expected.
-      return null;
+      nextByte = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Byte>)(in::readByte));
+    } catch (FailsafeException eof) {
+      if(eof.getCause() instanceof EOFException) {
+        // EOF at an opcode boundary is expected.
+        return null;}
+      throw eof;
     }
     // Each log entry starts with a var-int. Thus a valid entry's first byte
     // should not be 0. So if the terminate byte is 0, we should hit the end
@@ -299,12 +315,12 @@ class SegmentedRaftLogReader implements Closeable {
     checkBufferSize(totalLength);
     in.reset();
     in.mark(maxOpSize);
-    IOUtils.readFully(in, temp, 0, totalLength);
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)->{IOUtils.readFully(in, temp, 0, totalLength);});
 
     // verify checksum
     checksum.reset();
     checksum.update(temp, 0, totalLength);
-    int expectedChecksum = in.readInt();
+    int expectedChecksum = Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<Integer>)(in::readInt));
     int calculatedChecksum = (int) checksum.getValue();
     if (expectedChecksum != calculatedChecksum) {
       final String s = StringUtils.format("Log entry corrupted: Calculated checksum is %08X but read checksum is %08X.",
@@ -313,8 +329,10 @@ class SegmentedRaftLogReader implements Closeable {
     }
 
     // parse the buffer
-    return LogEntryProto.parseFrom(
-        CodedInputStream.newInstance(temp, varintLength, entryLength));
+    return Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<LogEntryProto>)()->{
+      return(LogEntryProto.parseFrom(
+        CodedInputStream.newInstance(temp, varintLength, entryLength)));
+    });
   }
 
   private void checkBufferSize(int entryLength) {

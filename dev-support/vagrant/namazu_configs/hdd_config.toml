@@ -23,4 +23,4 @@ explorePolicy = "random"
   maxInterval = "300ms"
 
   # for Filesystem inspectors, you can specify fault-injection probability (0.0-1.0).
-  faultActionProbability = 0.0
+  faultActionProbability = 0.4

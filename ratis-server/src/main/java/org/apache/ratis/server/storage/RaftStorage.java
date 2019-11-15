@@ -34,6 +34,12 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.nio.file.Files;
 
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
+
+import org.apache.ratis.retry.IORetryPolicy;
+
 public class RaftStorage implements Closeable {
   private static final Logger LOG = LoggerFactory.getLogger(RaftStorage.class);
 
@@ -92,7 +98,9 @@ public class RaftStorage implements Closeable {
   }
 
   private void cleanMetaTmpFile() throws IOException {
-    Files.deleteIfExists(storageDir.getMetaTmpFile().toPath());
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      Files.deleteIfExists(storageDir.getMetaTmpFile().toPath());
+    });
   }
 
   private StorageState analyzeAndRecoverStorage(boolean toLock)
@@ -131,22 +139,27 @@ public class RaftStorage implements Closeable {
 
   public void writeRaftConfiguration(LogEntryProto conf) {
     File confFile = storageDir.getMetaConfFile();
-    try (FileOutputStream fio = new FileOutputStream(confFile)) {
-      conf.writeTo(fio);
-    } catch (Exception e) {
-      LOG.error("Failed writing configuration to file:" + confFile, e);
-    }
+    // XXX this seems not idempotent?
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      try (FileOutputStream fio = new FileOutputStream(confFile)) {
+        conf.writeTo(fio);
+      } catch (Exception e) {
+        LOG.error("Failed writing configuration to file:" + confFile, e);
+      }
+    });
   }
 
   public RaftConfiguration readRaftConfiguration() {
     File confFile = storageDir.getMetaConfFile();
-    try (FileInputStream fio = new FileInputStream(confFile)) {
-      LogEntryProto confProto = LogEntryProto.newBuilder().mergeFrom(fio).build();
-      return ServerProtoUtils.toRaftConfiguration(confProto);
-    } catch (Exception e) {
-      LOG.error("Failed reading configuration from file:" + confFile, e);
-      return null;
-    }
+    return(Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<RaftConfiguration>)()->{
+      try (FileInputStream fio = new FileInputStream(confFile)) {
+        LogEntryProto confProto = LogEntryProto.newBuilder().mergeFrom(fio).build();
+        return ServerProtoUtils.toRaftConfiguration(confProto);
+      } catch (Exception e) {
+        LOG.error("Failed reading configuration from file:" + confFile, e);
+        return null;
+      }
+    }));
   }
 
   @Override

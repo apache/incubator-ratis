@@ -80,6 +80,10 @@
       <scope>test</scope>
     </dependency>
     <dependency>
+      <groupId>net.jodah</groupId>
+      <artifactId>failsafe</artifactId>
+    </dependency>
+    <dependency>
       <groupId>org.apache.ratis</groupId>
       <artifactId>ratis-metrics</artifactId>
     </dependency>

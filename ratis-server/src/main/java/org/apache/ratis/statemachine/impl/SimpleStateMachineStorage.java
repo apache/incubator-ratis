@@ -40,6 +40,11 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
+import net.jodah.failsafe.Failsafe;
+import net.jodah.failsafe.function.CheckedRunnable;
+import net.jodah.failsafe.function.CheckedSupplier;
+
+import org.apache.ratis.retry.IORetryPolicy;
 
 /**
  * A StateMachineStorage that stores the snapshot in a single file.
@@ -73,34 +78,36 @@ public class SimpleStateMachineStorage implements StateMachineStorage {
 
   @Override
   public void cleanupOldSnapshots(SnapshotRetentionPolicy snapshotRetentionPolicy) throws IOException {
-    if (snapshotRetentionPolicy != null && snapshotRetentionPolicy.getNumSnapshotsRetained() > 0) {
+    Failsafe.with(IORetryPolicy.retryPolicy).run((CheckedRunnable)()->{
+      if (snapshotRetentionPolicy != null && snapshotRetentionPolicy.getNumSnapshotsRetained() > 0) {
 
-      List<SingleFileSnapshotInfo> allSnapshotFiles = new ArrayList<>();
-      try (DirectoryStream<Path> stream =
-               Files.newDirectoryStream(smDir.toPath())) {
-        for (Path path : stream) {
-          Matcher matcher = SNAPSHOT_REGEX.matcher(path.getFileName().toString());
-          if (matcher.matches()) {
-            final long endIndex = Long.parseLong(matcher.group(2));
-            final long term = Long.parseLong(matcher.group(1));
-            final FileInfo fileInfo = new FileInfo(path, null); //We don't need FileDigest here.
-            allSnapshotFiles.add(new SingleFileSnapshotInfo(fileInfo, term, endIndex));
+        List<SingleFileSnapshotInfo> allSnapshotFiles = new ArrayList<>();
+        try (DirectoryStream<Path> stream =
+                 Files.newDirectoryStream(smDir.toPath())) {
+          for (Path path : stream) {
+            Matcher matcher = SNAPSHOT_REGEX.matcher(path.getFileName().toString());
+            if (matcher.matches()) {
+              final long endIndex = Long.parseLong(matcher.group(2));
+              final long term = Long.parseLong(matcher.group(1));
+              final FileInfo fileInfo = new FileInfo(path, null); //We don't need FileDigest here.
+              allSnapshotFiles.add(new SingleFileSnapshotInfo(fileInfo, term, endIndex));
+            }
+          }
+        }
+
+        if (allSnapshotFiles.size() > snapshotRetentionPolicy.getNumSnapshotsRetained()) {
+          allSnapshotFiles.sort(new SnapshotFileComparator());
+          List<File> snapshotFilesToBeCleaned = allSnapshotFiles.subList(
+              snapshotRetentionPolicy.getNumSnapshotsRetained(), allSnapshotFiles.size()).stream()
+              .map(singleFileSnapshotInfo -> singleFileSnapshotInfo.getFile().getPath().toFile())
+              .collect(Collectors.toList());
+          for (File snapshotFile : snapshotFilesToBeCleaned) {
+            LOG.info("Deleting old snapshot at {}", snapshotFile.getAbsolutePath());
+            FileUtils.deleteFileQuietly(snapshotFile);
           }
         }
       }
-
-      if (allSnapshotFiles.size() > snapshotRetentionPolicy.getNumSnapshotsRetained()) {
-        allSnapshotFiles.sort(new SnapshotFileComparator());
-        List<File> snapshotFilesToBeCleaned = allSnapshotFiles.subList(
-            snapshotRetentionPolicy.getNumSnapshotsRetained(), allSnapshotFiles.size()).stream()
-            .map(singleFileSnapshotInfo -> singleFileSnapshotInfo.getFile().getPath().toFile())
-            .collect(Collectors.toList());
-        for (File snapshotFile : snapshotFilesToBeCleaned) {
-          LOG.info("Deleting old snapshot at {}", snapshotFile.getAbsolutePath());
-          FileUtils.deleteFileQuietly(snapshotFile);
-        }
-      }
-    }
+    });
   }
 
   public static TermIndex getTermIndexFromSnapshotFile(File file) {
@@ -137,23 +144,25 @@ public class SimpleStateMachineStorage implements StateMachineStorage {
   }
 
   public SingleFileSnapshotInfo findLatestSnapshot() throws IOException {
-    SingleFileSnapshotInfo latest = null;
-    try (DirectoryStream<Path> stream =
-             Files.newDirectoryStream(smDir.toPath())) {
-      for (Path path : stream) {
-        Matcher matcher = SNAPSHOT_REGEX.matcher(path.getFileName().toString());
-        if (matcher.matches()) {
-          final long endIndex = Long.parseLong(matcher.group(2));
-          if (latest == null || endIndex > latest.getIndex()) {
-            final long term = Long.parseLong(matcher.group(1));
-            MD5Hash fileDigest = MD5FileUtil.readStoredMd5ForFile(path.toFile());
-            final FileInfo fileInfo = new FileInfo(path, fileDigest);
-            latest = new SingleFileSnapshotInfo(fileInfo, term, endIndex);
+    return((Failsafe.with(IORetryPolicy.retryPolicy).get((CheckedSupplier<SingleFileSnapshotInfo>)()->{
+      SingleFileSnapshotInfo latest = null;
+      try (DirectoryStream<Path> stream =
+               Files.newDirectoryStream(smDir.toPath())) {
+        for (Path path : stream) {
+          Matcher matcher = SNAPSHOT_REGEX.matcher(path.getFileName().toString());
+          if (matcher.matches()) {
+            final long endIndex = Long.parseLong(matcher.group(2));
+            if (latest == null || endIndex > latest.getIndex()) {
+              final long term = Long.parseLong(matcher.group(1));
+              MD5Hash fileDigest = MD5FileUtil.readStoredMd5ForFile(path.toFile());
+              final FileInfo fileInfo = new FileInfo(path, fileDigest);
+              latest = new SingleFileSnapshotInfo(fileInfo, term, endIndex);
+            }
           }
         }
       }
-    }
-    return latest;
+      return(latest);
+    })));
   }
 
   public void loadLatestSnapshot() throws IOException {
