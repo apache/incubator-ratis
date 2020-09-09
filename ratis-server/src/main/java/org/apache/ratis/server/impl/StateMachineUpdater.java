@@ -29,7 +29,11 @@ import org.apache.ratis.server.raftlog.RaftLogIndex;
 import org.apache.ratis.statemachine.SnapshotInfo;
 import org.apache.ratis.statemachine.StateMachine;
 import org.apache.ratis.statemachine.impl.SnapshotRetentionPolicy;
-import org.apache.ratis.util.*;
+import org.apache.ratis.util.Daemon;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.LifeCycle;
+import org.apache.ratis.util.MemoizedSupplier;
+import org.apache.ratis.util.Preconditions;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +56,7 @@ import com.codahale.metrics.Timer;
  * asynchronously so that this will not block normal raft protocol.
  *
  * If the auto log compaction is enabled, the state machine updater thread will
- * trigger a snapshot of the state machine by calling
+ * trigger a snapshot of the state machine by callingestRestartFollower/
  * {@link StateMachine#takeSnapshot} when the log size exceeds a limit.
  */
 class StateMachineUpdater implements Runnable {

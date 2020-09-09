@@ -17,10 +17,14 @@
  */
 package org.apache.ratis.server.impl;
 
+import java.util.Iterator;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import org.apache.ratis.util.Preconditions;
 import org.apache.ratis.util.StringUtils;
 
-import java.util.*;
 
 /**
  * Maintain the mappings between log index and corresponding raft configuration.

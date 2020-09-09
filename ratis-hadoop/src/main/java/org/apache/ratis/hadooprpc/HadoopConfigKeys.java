@@ -17,6 +17,12 @@
  */
 package org.apache.ratis.hadooprpc;
 
+import static org.apache.ratis.conf.ConfUtils.getInetSocketAddress;
+import static org.apache.ratis.conf.ConfUtils.getInt;
+import static org.apache.ratis.conf.ConfUtils.printAll;
+import static org.apache.ratis.conf.ConfUtils.requireMin;
+import static org.apache.ratis.conf.ConfUtils.set;
+
 import org.apache.hadoop.conf.Configuration;
 import org.apache.ratis.conf.Parameters;
 import org.slf4j.Logger;
@@ -25,7 +31,6 @@ import org.slf4j.LoggerFactory;
 import java.net.InetSocketAddress;
 import java.util.function.Consumer;
 
-import static org.apache.ratis.conf.ConfUtils.*;
 
 /** Hadoop Rpc specific configuration properties. */
 public interface HadoopConfigKeys {

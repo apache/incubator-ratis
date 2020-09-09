@@ -23,7 +23,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.function.Consumer;
 
-import static org.apache.ratis.conf.ConfUtils.*;
+import static org.apache.ratis.conf.ConfUtils.getInt;
+import static org.apache.ratis.conf.ConfUtils.printAll;
+import static org.apache.ratis.conf.ConfUtils.requireMax;
+import static org.apache.ratis.conf.ConfUtils.requireMin;
+import static org.apache.ratis.conf.ConfUtils.setInt;
 
 public interface NettyConfigKeys {
   String PREFIX = "raft.netty";

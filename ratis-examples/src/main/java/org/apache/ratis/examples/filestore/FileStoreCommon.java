@@ -18,11 +18,14 @@
 package org.apache.ratis.examples.filestore;
 
 import org.apache.ratis.thirdparty.com.google.protobuf.ByteString;
-import org.apache.ratis.util.*;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.concurrent.CompletableFuture;
+import org.apache.ratis.util.JavaUtils;
+import org.apache.ratis.util.ProtoUtils;
+import org.apache.ratis.util.SizeInBytes;
+import org.apache.ratis.util.TraditionalBinaryPrefix;
 
 public interface FileStoreCommon {
   String STATEMACHINE_DIR_KEY = "example.filestore.statemachine.dir";

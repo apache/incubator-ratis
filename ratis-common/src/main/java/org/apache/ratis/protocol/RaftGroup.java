@@ -17,9 +17,14 @@
  */
 package org.apache.ratis.protocol;
 
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 import org.apache.ratis.util.Preconditions;
 
-import java.util.*;
 
 /**
  * Description of a raft group, which has a unique {@link RaftGroupId} and a collection of {@link RaftPeer}.
@@ -35,7 +40,8 @@ public final class RaftGroup {
 
   /** @return a group with the given id and peers. */
   public static RaftGroup valueOf(RaftGroupId groupId, RaftPeer... peers) {
-    return new RaftGroup(groupId, peers == null || peers.length == 0? Collections.emptyList(): Arrays.asList(peers));
+    return new RaftGroup(groupId, peers == null || peers.length == 0? Collections.emptyList(): Arrays
+        .asList(peers));
   }
 
   /** @return a group with the given id and peers. */

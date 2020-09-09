@@ -17,13 +17,24 @@
  */
 package org.apache.ratis.protocol;
 
-import org.apache.ratis.proto.RaftProtos.*;
+import org.apache.ratis.proto.RaftProtos.RaftClientRequestProto;
+import org.apache.ratis.proto.RaftProtos.ReadRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.ReplicationLevel;
+import org.apache.ratis.proto.RaftProtos.SlidingWindowEntry;
+import org.apache.ratis.proto.RaftProtos.StaleReadRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.StreamRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.WatchRequestTypeProto;
+import org.apache.ratis.proto.RaftProtos.WriteRequestTypeProto;
 import org.apache.ratis.util.Preconditions;
 import org.apache.ratis.util.ProtoUtils;
 
 import java.util.Objects;
 
-import static org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase.*;
+import static org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase.READ;
+import static org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase.STALEREAD;
+import static org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase.STREAM;
+import static org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase.WATCH;
+import static org.apache.ratis.proto.RaftProtos.RaftClientRequestProto.TypeCase.WRITE;
 
 /**
  * Request from client to server

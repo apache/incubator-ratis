@@ -123,8 +123,8 @@
         <module name="TypeName"/>
 
         <!-- Checks for imports                              -->
-        <!-- See http://checkstyle.sf.net/config_import.html -->
-        <!-- module name="AvoidStarImport"/ -->
+        <!-- See https://checkstyle.sourceforge.io/config_imports.html -->
+        <module name="AvoidStarImport"/>
         <module name="IllegalImport"/> <!-- defaults to sun.* packages -->
         <module name="RedundantImport"/>
         <module name="UnusedImports">
