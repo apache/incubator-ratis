@@ -173,6 +173,12 @@ public class NettyRpcProxy implements Closeable {
     connection.close();
   }
 
+  public CompletableFuture<RaftNettyServerReplyProto> sendAsync(RaftNettyServerRequestProto proto) {
+    final CompletableFuture<RaftNettyServerReplyProto> reply = new CompletableFuture<>();
+    connection.offer(proto, reply);
+    return reply;
+  }
+
   public RaftNettyServerReplyProto send(
       RaftRpcRequestProto request, RaftNettyServerRequestProto proto)
       throws IOException {
