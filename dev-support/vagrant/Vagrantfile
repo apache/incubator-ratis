@@ -78,6 +78,9 @@ Vagrant.configure('2') do |config|
     # install packages
     ratisbuild.vm.provision :shell, name: 'Install Packages', inline: <<-EOH
       set -e
+      # load central file URLs and checksums
+      source #{RATIS_PATH}/dev-support/binary_locations.sh
+
       # setup /usr/local/bin for non-packaged software
       if [[ $(egrep -c 'PATH.*/usr/local/bin' /etc/environment) -eq 0 ]]; then
         echo 'export PATH=${PATH}:/usr/local/bin' >> /etc/environment
@@ -89,14 +92,24 @@ Vagrant.configure('2') do |config|
 
       # install Maven
       mkdir -p /usr/local
-      wget --continue http://apache.mirrors.ionfish.org/maven/maven-3/3.6.0/binaries/apache-maven-3.6.0-bin.tar.gz
-      tar -xzf apache-maven-3.6.0-bin.tar.gz -C /usr/local
-      [ -L /usr/local/bin/mvn ] || ln -s /usr/local/apache-maven-3.6.0/bin/mvn /usr/local/bin/mvn
+      wget --continue "$ratis_maven_url"
+      if [[ "$(sha512sum "$ratis_maven_file")" != \
+            "$ratis_maven_sum  $ratis_maven_file" ]]; then
+        echo "Checksum failed for $ratis_maven_file" > /dev/stderr
+        exit 1
+      fi
+      tar -xzf "$ratis_maven_file" -C /usr/local
+      [ -L /usr/local/bin/mvn ] || ln -s /usr/local/apache-maven-*/bin/mvn /usr/local/bin/mvn
 
       # Namazu dependencies
       apt-get install -y git libnetfilter-queue-dev libzmq3-dev
-      wget --continue https://dl.google.com/go/go1.11.2.linux-amd64.tar.gz
-      tar -xzf go1.11.2.linux-amd64.tar.gz -C /usr/local
+      wget --continue "$ratis_go_url"
+      if [[ "$(sha256sum "$ratis_go_file")" != \
+            "$ratis_go_sum  $ratis_go_file" ]]; then
+        echo "Checksum failed for $ratis_go_file" > /dev/stderr
+        exit 1
+      fi
+      tar -xzf "$ratis_go_file" -C /usr/local
       [ -L /usr/local/bin/go ] || ln -s /usr/local/go/bin/go /usr/local/bin/go
     EOH
 
