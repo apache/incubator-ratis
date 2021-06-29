@@ -17,11 +17,15 @@
  */
 package org.apache.ratis.netty;
 
+import java.io.Closeable;
+import java.net.InetSocketAddress;
 import org.apache.ratis.thirdparty.io.netty.bootstrap.Bootstrap;
 import org.apache.ratis.thirdparty.io.netty.channel.Channel;
 import org.apache.ratis.thirdparty.io.netty.channel.ChannelFuture;
 import org.apache.ratis.thirdparty.io.netty.channel.ChannelInitializer;
 import org.apache.ratis.thirdparty.io.netty.channel.EventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollEventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollSocketChannel;
 import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
 import org.apache.ratis.thirdparty.io.netty.channel.socket.nio.NioSocketChannel;
 import org.apache.ratis.thirdparty.io.netty.handler.logging.LogLevel;
@@ -29,9 +33,6 @@ import org.apache.ratis.thirdparty.io.netty.handler.logging.LoggingHandler;
 import org.apache.ratis.util.JavaUtils;
 import org.apache.ratis.util.LifeCycle;
 import org.apache.ratis.util.NetUtils;
-
-import java.io.Closeable;
-import java.net.InetSocketAddress;
 
 public class NettyClient implements Closeable {
   private final LifeCycle lifeCycle = new LifeCycle(JavaUtils.getClassSimpleName(getClass()));
@@ -44,10 +45,17 @@ public class NettyClient implements Closeable {
       throws InterruptedException {
     final InetSocketAddress address = NetUtils.createSocketAddr(serverAddress);
 
+    final Class<? extends SocketChannel> socketChannel;
+    if (group instanceof EpollEventLoopGroup) {
+      socketChannel = EpollSocketChannel.class;
+    } else {
+      socketChannel = NioSocketChannel.class;
+    }
+
     lifeCycle.startAndTransition(
         () -> channel = new Bootstrap()
             .group(group)
-            .channel(NioSocketChannel.class)
+            .channel(socketChannel)
             .handler(new LoggingHandler(LogLevel.INFO))
             .handler(initializer)
             .connect(address)

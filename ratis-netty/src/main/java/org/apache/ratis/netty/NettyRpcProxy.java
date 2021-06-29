@@ -22,6 +22,7 @@ import org.apache.ratis.conf.RaftProperties;
 import org.apache.ratis.protocol.RaftPeer;
 import org.apache.ratis.protocol.exceptions.TimeoutIOException;
 import org.apache.ratis.thirdparty.io.netty.channel.*;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollEventLoopGroup;
 import org.apache.ratis.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
 import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
 import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufDecoder;
@@ -48,9 +49,19 @@ import java.util.concurrent.TimeoutException;
 import static org.apache.ratis.proto.netty.NettyProtos.RaftNettyServerReplyProto.RaftNettyServerReplyCase.EXCEPTIONREPLY;
 
 public class NettyRpcProxy implements Closeable {
+
   public static class PeerMap extends PeerProxyMap<NettyRpcProxy> {
-    private final EventLoopGroup group = new NioEventLoopGroup();
+
+    private static final EventLoopGroup GROUP = initClientEventLoop();
     private final RaftProperties properties;
+
+    private static EventLoopGroup initClientEventLoop() {
+      try {
+        return new EpollEventLoopGroup();
+      } catch (Throwable throwable) {
+        return new NioEventLoopGroup();
+      }
+    }
 
     public PeerMap(String name, RaftProperties properties) {
       super(name);
@@ -59,9 +70,9 @@ public class NettyRpcProxy implements Closeable {
 
     @Override
     public NettyRpcProxy createProxyImpl(RaftPeer peer)
-            throws IOException {
+        throws IOException {
       try {
-        return new NettyRpcProxy(peer, properties, group);
+        return new NettyRpcProxy(peer, properties, GROUP);
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         throw IOUtils.toInterruptedIOException("Failed connecting to " + peer, e);
@@ -71,7 +82,7 @@ public class NettyRpcProxy implements Closeable {
     @Override
     public void close() {
       super.close();
-      group.shutdownGracefully();
+      GROUP.shutdownGracefully();
     }
   }
 
@@ -100,6 +111,7 @@ public class NettyRpcProxy implements Closeable {
 
 
   class Connection implements Closeable {
+
     private final NettyClient client = new NettyClient();
     private final Queue<CompletableFuture<RaftNettyServerReplyProto>> replies
         = new LinkedList<>();
@@ -109,7 +121,7 @@ public class NettyRpcProxy implements Closeable {
           = new SimpleChannelInboundHandler<RaftNettyServerReplyProto>() {
         @Override
         protected void channelRead0(ChannelHandlerContext ctx,
-                                    RaftNettyServerReplyProto proto) {
+            RaftNettyServerReplyProto proto) {
           final CompletableFuture<RaftNettyServerReplyProto> future = pollReply();
           if (future == null) {
             throw new IllegalStateException("Request #" + getCallId(proto)
@@ -117,7 +129,7 @@ public class NettyRpcProxy implements Closeable {
           }
           if (proto.getRaftNettyServerReplyCase() == EXCEPTIONREPLY) {
             final Object ioe = ProtoUtils.toObject(proto.getExceptionReply().getException());
-            future.completeExceptionally((IOException)ioe);
+            future.completeExceptionally((IOException) ioe);
           } else {
             future.complete(proto);
           }
@@ -166,7 +178,8 @@ public class NettyRpcProxy implements Closeable {
   private final Connection connection;
   private final TimeDuration requestTimeoutDuration;
 
-  public NettyRpcProxy(RaftPeer peer, RaftProperties properties, EventLoopGroup group) throws InterruptedException {
+  public NettyRpcProxy(RaftPeer peer, RaftProperties properties, EventLoopGroup group)
+      throws InterruptedException {
     this.peer = peer;
     this.connection = new Connection(group);
     this.requestTimeoutDuration = RaftClientConfigKeys.Rpc.requestTimeout(properties);

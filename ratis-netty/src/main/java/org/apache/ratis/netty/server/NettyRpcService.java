@@ -29,7 +29,10 @@ import org.apache.ratis.server.RaftServer;
 import org.apache.ratis.server.RaftServerRpcWithProxy;
 import org.apache.ratis.thirdparty.io.netty.bootstrap.ServerBootstrap;
 import org.apache.ratis.thirdparty.io.netty.channel.*;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollEventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.epoll.EpollServerSocketChannel;
 import org.apache.ratis.thirdparty.io.netty.channel.nio.NioEventLoopGroup;
+import org.apache.ratis.thirdparty.io.netty.channel.socket.ServerSocketChannel;
 import org.apache.ratis.thirdparty.io.netty.channel.socket.SocketChannel;
 import org.apache.ratis.thirdparty.io.netty.channel.socket.nio.NioServerSocketChannel;
 import org.apache.ratis.thirdparty.io.netty.handler.codec.protobuf.ProtobufDecoder;
@@ -82,8 +85,9 @@ public final class NettyRpcService extends RaftServerRpcWithProxy<NettyRpcProxy,
 
   private final RaftServer server;
 
-  private final EventLoopGroup bossGroup = new NioEventLoopGroup();
-  private final EventLoopGroup workerGroup = new NioEventLoopGroup();
+  private EventLoopGroup bossGroup;
+  private EventLoopGroup workerGroup;
+  private Class<? extends ServerSocketChannel> serverSocketChannelClass;
   private final ChannelFuture channelFuture;
 
   @ChannelHandler.Sharable
@@ -115,13 +119,27 @@ public final class NettyRpcService extends RaftServerRpcWithProxy<NettyRpcProxy,
       }
     };
 
+    initEventLoop();
+
     final int port = NettyConfigKeys.Server.port(server.getProperties());
     channelFuture = new ServerBootstrap()
         .group(bossGroup, workerGroup)
-        .channel(NioServerSocketChannel.class)
+        .channel(serverSocketChannelClass)
         .handler(new LoggingHandler(LogLevel.INFO))
         .childHandler(initializer)
         .bind(port);
+  }
+
+  private void initEventLoop() {
+    try {
+      bossGroup = new EpollEventLoopGroup();
+      workerGroup = new EpollEventLoopGroup();
+      serverSocketChannelClass = EpollServerSocketChannel.class;
+    } catch (Throwable throwable) {
+      bossGroup = new NioEventLoopGroup();
+      workerGroup = new NioEventLoopGroup();
+      serverSocketChannelClass = NioServerSocketChannel.class;
+    }
   }
 
   @Override
