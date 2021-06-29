@@ -54,22 +54,36 @@ RUN apt-get -q install -y openjdk-8-jdk
 ######
 # Install protobuf compiler
 ######
-
+ARG ratis_protoc_url
+ARG ratis_protoc_file
+ARG ratis_protoc_sum
 RUN mkdir -p $HOME/protobuf && \
     cd $HOME/protobuf && \
-    wget https://github.com/google/protobuf/releases/download/v3.5.0/protoc-3.5.0-linux-x86_64.zip && \
-    unzip protoc-3.5.0-linux-x86_64.zip && \
+    wget --continue "${ratis_protoc_url:?Need \$ratis_protoc_url}" && \
+    if [ "$(sha256sum "${ratis_protoc_file:?Need \$ratis_protoc_file}")" != \
+        "${ratis_protoc_sum:?Need \$ratis_protoc_sum}  $ratis_protoc_file" ]; then \
+      echo "Checksum failed for $ratis_protoc_file" > /dev/stderr && \
+      exit 1; \
+    fi && \
+    unzip "$ratis_protoc_file" && \
     mv $HOME/protobuf/bin/protoc /usr/local/bin && \
     chmod 755 /usr/local/bin/protoc
 
 ######
 # Install Apache Maven
 ######
+ARG ratis_maven_url
+ARG ratis_maven_file
+ARG ratis_maven_sum
 RUN mkdir -p /opt/maven && \
-    curl -L -s -S \
-         http://www-us.apache.org/dist/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz \
-         -o /opt/maven.tar.gz && \
-    tar xzf /opt/maven.tar.gz --strip-components 1 -C /opt/maven
+    cd $HOME && \
+    wget --continue "${ratis_maven_url:?Need \$ratis_maven_url}" && \
+    if [ "$(sha512sum "${ratis_maven_file:?Need \$ratis_maven_file}")" != \
+      "${ratis_maven_sum:?Need \$ratis_maven_sum}  $ratis_maven_file" ]; then \
+      echo "Checksum failed for $ratis_maven_file" > /dev/stderr && \
+      exit 1; \
+    fi && \
+    tar xzf $ratis_maven_file --strip-components 1 -C /opt/maven
 ENV MAVEN_HOME /opt/maven
 ENV PATH "$PATH:/opt/maven/bin"
 
