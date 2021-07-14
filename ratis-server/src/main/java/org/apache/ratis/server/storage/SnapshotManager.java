@@ -21,7 +21,6 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.util.UUID;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.apache.ratis.io.CorruptedFileException;
@@ -63,22 +62,25 @@ public class SnapshotManager {
     final long lastIncludedIndex = snapshotChunkRequest.getTermIndex().getIndex();
     final RaftStorageDirectory dir = storage.getStorageDir();
 
-    // create a unique temporary directory
-    final File tmpDir =  new File(dir.getTmpDir(), UUID.randomUUID().toString());
+    // create a unique temporary directory based on the request id
+    final File tmpDir =  new File(dir.getTmpDir(), snapshotChunkRequest.getRequestId());
     FileUtils.createDirectories(tmpDir);
     tmpDir.deleteOnExit();
 
-    LOG.info("Installing snapshot:{}, to tmp dir:{}", request, tmpDir);
+    LOG.info("Installing snapshot:{}, to tmp dir:{}", snapshotChunkRequest.getRequestId(), tmpDir);
 
     // TODO: Make sure that subsequent requests for the same installSnapshot are coming in order,
     // and are not lost when whole request cycle is done. Check requestId and requestIndex here
 
     for (FileChunkProto chunk : snapshotChunkRequest.getFileChunksList()) {
+      LOG.info("Installing chunk :{} with offset{}, to tmp dir:{} for file {}",
+              chunk.getChunkIndex(), chunk.getOffset(), tmpDir, chunk.getFilename());
       SnapshotInfo pi = stateMachine.getLatestSnapshot();
       if (pi != null && pi.getTermIndex().getIndex() >= lastIncludedIndex) {
         throw new IOException("There exists snapshot file "
             + pi.getFiles() + " in " + selfId
-            + " with endIndex >= lastIncludedIndex " + lastIncludedIndex);
+            + " with endIndex (" + pi.getTermIndex().getIndex()
+            + ") >= lastIncludedIndex (" + lastIncludedIndex + ")");
       }
 
       String fileName = chunk.getFilename(); // this is relative to the root dir
@@ -132,10 +134,10 @@ public class SnapshotManager {
     }
 
     if (snapshotChunkRequest.getDone()) {
-      LOG.info("Install snapshot is done, renaming tnp dir:{} to:{}",
+      LOG.info("Install snapshot is done, moving files from dir:{} to:{}",
           tmpDir, dir.getStateMachineDir());
-      dir.getStateMachineDir().delete();
-      tmpDir.renameTo(dir.getStateMachineDir());
+      FileUtils.moveDirectory(tmpDir.toPath(), dir.getStateMachineDir().toPath());
+      FileUtils.deleteFully(tmpDir);
     }
   }
 }

@@ -206,7 +206,9 @@ class StateMachineUpdater implements Runnable {
   }
 
   private void reload() throws IOException {
-    Preconditions.assertTrue(stateMachine.getLifeCycleState() == LifeCycle.State.PAUSED);
+    LifeCycle.State current = stateMachine.getLifeCycleState();
+
+    Preconditions.assertTrue(current == LifeCycle.State.NEW || current == LifeCycle.State.PAUSED);
 
     stateMachine.reinitialize();
 

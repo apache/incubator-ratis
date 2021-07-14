@@ -25,6 +25,7 @@ import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Path;
 import java.util.Optional;
 
@@ -65,7 +66,7 @@ public class FileChunkReader implements Closeable {
   public FileChunkProto readFileChunk(int chunkMaxSize) throws IOException {
     final long remaining = info.getFileSize() - offset;
     final int chunkLength = remaining < chunkMaxSize ? (int) remaining : chunkMaxSize;
-    final ByteString data = ByteString.readFrom(in, chunkLength);
+    final ByteString data = readChunk(in, chunkLength);
 
     final FileChunkProto proto = FileChunkProto.newBuilder()
         .setFilename(relativePath.toString())
@@ -80,6 +81,32 @@ public class FileChunkReader implements Closeable {
     return proto;
   }
 
+  /**
+   * Blocks until a chunk of the given size can be made from the stream, or EOF is reached. Calls
+   * read() repeatedly in case the given stream implementation doesn't completely fill the given
+   * buffer in one read() call.
+   *
+   * @return A chunk of the desired size, or else a chunk as large as was available when end of
+   *     stream was reached. Returns null if the given stream had no more data in it.
+   */
+  private static ByteString readChunk(InputStream in, final int chunkSize) throws IOException {
+    final byte[] buf = new byte[chunkSize];
+    int bytesRead = 0;
+    while (bytesRead < chunkSize) {
+      final int count = in.read(buf, bytesRead, chunkSize - bytesRead);
+      if (count == -1) {
+        break;
+      }
+      bytesRead += count;
+    }
+
+    if (bytesRead == 0) {
+      return null;
+    }
+
+    // Always make a copy since InputStream could steal a reference to buf.
+    return ByteString.copyFrom(buf, 0, bytesRead);
+  }
   @Override
   public void close() throws IOException {
     in.close();
