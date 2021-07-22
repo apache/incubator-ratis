@@ -28,6 +28,7 @@ import org.apache.ratis.server.RaftServer;
 import org.apache.ratis.server.raftlog.RaftLogIOException;
 import org.apache.ratis.server.util.ServerStringUtils;
 import org.apache.ratis.statemachine.SnapshotInfo;
+import org.apache.ratis.util.Timestamp;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -62,9 +63,12 @@ class LogAppenderDefault extends LogAppenderBase {
           return null;
         }
 
-        getFollower().updateLastRpcSendTime();
+        if (request.getEntriesCount() == 0) {
+          getFollower().updateLastHeartBeatSendTime();
+        }
+        Timestamp sendTime = Timestamp.currentTime();
         final AppendEntriesReplyProto r = getServerRpc().appendEntries(request);
-        getFollower().updateLastRpcResponseTime();
+        getFollower().updateLastRpcResponseTime(sendTime);
 
         getLeaderState().onFollowerCommitIndex(getFollower(), r.getFollowerCommit());
         return r;
@@ -89,9 +93,9 @@ class LogAppenderDefault extends LogAppenderBase {
     InstallSnapshotReplyProto reply = null;
     try {
       for (InstallSnapshotRequestProto request : newInstallSnapshotRequests(requestId, snapshot)) {
-        getFollower().updateLastRpcSendTime();
+        Timestamp sendTime = Timestamp.currentTime();
         reply = getServerRpc().installSnapshot(request);
-        getFollower().updateLastRpcResponseTime();
+        getFollower().updateLastRpcResponseTime(sendTime);
 
         if (!reply.getServerReply().getSuccess()) {
           return reply;

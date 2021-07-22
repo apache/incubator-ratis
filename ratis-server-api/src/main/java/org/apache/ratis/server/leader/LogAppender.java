@@ -154,7 +154,9 @@ public interface LogAppender {
    * @return the time in milliseconds that the leader should send a heartbeat.
    */
   default long getHeartbeatRemainingTimeMs() {
-    return getServer().properties().minRpcTimeoutMs()/2 - getFollower().getLastRpcTime().elapsedTimeMs();
+    return getServer().properties().minRpcTimeoutMs()/2 -
+       Math.min(getFollower().getLastRpcSendTimeWithResponse().elapsedTimeMs(),
+           getFollower().getLastHeartBeatSendTime().elapsedTimeMs());
   }
 
   /** Handle the event that the follower has replied a term. */

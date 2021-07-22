@@ -34,7 +34,8 @@ class FollowerInfoImpl implements FollowerInfo {
 
   private final RaftPeer peer;
   private final AtomicReference<Timestamp> lastRpcResponseTime;
-  private final AtomicReference<Timestamp> lastRpcSendTime;
+  private final AtomicReference<Timestamp> lastRpcSendTimeWithResponse;
+  private final AtomicReference<Timestamp> lastHeartBeatSendTime;
   private final RaftLogIndex nextIndex;
   private final RaftLogIndex matchIndex = new RaftLogIndex("matchIndex", 0L);
   private final RaftLogIndex commitIndex = new RaftLogIndex("commitIndex", RaftLog.INVALID_LOG_INDEX);
@@ -48,7 +49,8 @@ class FollowerInfoImpl implements FollowerInfo {
 
     this.peer = peer;
     this.lastRpcResponseTime = new AtomicReference<>(lastRpcTime);
-    this.lastRpcSendTime = new AtomicReference<>(lastRpcTime);
+    this.lastRpcSendTimeWithResponse = new AtomicReference<>(lastRpcTime);
+    this.lastHeartBeatSendTime = new AtomicReference<>(lastRpcTime);
     this.nextIndex = new RaftLogIndex("nextIndex", nextIndex);
     this.attendVote = attendVote;
   }
@@ -119,7 +121,8 @@ class FollowerInfoImpl implements FollowerInfo {
   public String toString() {
     return name + "(c" + getCommitIndex() + ",m" + getMatchIndex() + ",n" + getNextIndex()
         + ", attendVote=" + attendVote +
-        ", lastRpcSendTime=" + lastRpcSendTime.get().elapsedTimeMs() +
+        ", lastHeartBeatSendTime=" + lastHeartBeatSendTime.get().elapsedTimeMs() +
+        ", lastRpcSendTimeWithResponse=" + lastRpcSendTimeWithResponse.get().elapsedTimeMs() +
         ", lastRpcResponseTime=" + lastRpcResponseTime.get().elapsedTimeMs() + ")";
   }
 
@@ -137,8 +140,11 @@ class FollowerInfoImpl implements FollowerInfo {
   }
 
   @Override
-  public void updateLastRpcResponseTime() {
+  public void updateLastRpcResponseTime(Timestamp sendTime) {
     lastRpcResponseTime.set(Timestamp.currentTime());
+    if (sendTime.compareTo(lastRpcSendTimeWithResponse.get()) > 0) {
+      lastRpcSendTimeWithResponse.set(sendTime);
+    }
   }
 
   @Override
@@ -147,12 +153,17 @@ class FollowerInfoImpl implements FollowerInfo {
   }
 
   @Override
-  public void updateLastRpcSendTime() {
-    lastRpcSendTime.set(Timestamp.currentTime());
+  public Timestamp getLastRpcSendTimeWithResponse() {
+    return lastRpcSendTimeWithResponse.get();
   }
 
   @Override
-  public Timestamp getLastRpcTime() {
-    return Timestamp.latest(lastRpcResponseTime.get(), lastRpcSendTime.get());
+  public void updateLastHeartBeatSendTime() {
+    lastHeartBeatSendTime.set(Timestamp.currentTime());
+  }
+
+  @Override
+  public Timestamp getLastHeartBeatSendTime() {
+    return lastHeartBeatSendTime.get();
   }
 }

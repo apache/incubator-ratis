@@ -482,7 +482,8 @@ class LeaderStateImpl implements LeaderState {
           LogAppender logAppender = server.newLogAppender(this, f);
           peerIdFollowerInfoMap.put(peer.getId(), f);
           raftServerMetrics.addFollower(peer.getId());
-          logAppenderMetrics.addFollowerGauges(peer.getId(), f::getNextIndex, f::getMatchIndex, f::getLastRpcTime);
+          logAppenderMetrics.addFollowerGauges(
+              peer.getId(), f::getNextIndex, f::getMatchIndex, f::getLastRpcResponseTime);
           return logAppender;
         }).collect(Collectors.toList());
     senders.addAll(newAppenders);
