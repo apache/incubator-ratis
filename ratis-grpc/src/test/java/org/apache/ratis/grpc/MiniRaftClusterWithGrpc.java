@@ -39,9 +39,9 @@ public class MiniRaftClusterWithGrpc extends MiniRaftCluster.RpcBase {
   public static final Factory<MiniRaftClusterWithGrpc> FACTORY
       = new Factory<MiniRaftClusterWithGrpc>() {
     @Override
-    public MiniRaftClusterWithGrpc newCluster(String[] ids, RaftProperties prop) {
+    public MiniRaftClusterWithGrpc newCluster(String[] ids, String[] idOfListeners, RaftProperties prop) {
       RaftConfigKeys.Rpc.setType(prop, SupportedRpcType.GRPC);
-      return new MiniRaftClusterWithGrpc(ids, prop);
+      return new MiniRaftClusterWithGrpc(ids, idOfListeners, prop);
     }
   };
 
@@ -54,6 +54,10 @@ public class MiniRaftClusterWithGrpc extends MiniRaftCluster.RpcBase {
 
   public static final DelayLocalExecutionInjection sendServerRequestInjection =
       new DelayLocalExecutionInjection(GrpcService.GRPC_SEND_SERVER_REQUEST);
+
+  protected MiniRaftClusterWithGrpc(String[] ids, String[] idOfLearners, RaftProperties properties) {
+    super(ids, idOfLearners, properties, null);
+  }
 
   protected MiniRaftClusterWithGrpc(String[] ids, RaftProperties properties) {
     super(ids, properties, null);

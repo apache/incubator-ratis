@@ -34,7 +34,7 @@ public class MiniRaftClusterWithRpcTypeGrpcAndDataStreamTypeNetty extends MiniRa
   public static final Factory<MiniRaftClusterWithRpcTypeGrpcAndDataStreamTypeNetty> FACTORY
       = new Factory<MiniRaftClusterWithRpcTypeGrpcAndDataStreamTypeNetty>() {
     @Override
-    public MiniRaftClusterWithRpcTypeGrpcAndDataStreamTypeNetty newCluster(String[] ids, RaftProperties prop) {
+    public MiniRaftClusterWithRpcTypeGrpcAndDataStreamTypeNetty newCluster(String[] ids, String[] idOfListeners, RaftProperties prop) {
       RaftConfigKeys.Rpc.setType(prop, SupportedRpcType.GRPC);
       RaftConfigKeys.DataStream.setType(prop, SupportedDataStreamType.NETTY);
       return new MiniRaftClusterWithRpcTypeGrpcAndDataStreamTypeNetty(ids, prop);

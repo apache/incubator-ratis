@@ -59,6 +59,7 @@ import static org.apache.ratis.server.metrics.LeaderElectionMetrics.LEADER_ELECT
 import static org.apache.ratis.server.metrics.LeaderElectionMetrics.LEADER_ELECTION_TIME_TAKEN;
 import static org.apache.ratis.server.metrics.LeaderElectionMetrics.LEADER_ELECTION_TIMEOUT_COUNT_METRIC;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.junit.Assert.assertNotNull;
@@ -288,7 +289,7 @@ public abstract class LeaderElectionTests<CLUSTER extends MiniRaftCluster>
         Thread.sleep(1000);
         isolate(cluster, leader.getId());
         RaftClientReply reply = client.io().send(new RaftTestUtil.SimpleMessage("message"));
-        Assert.assertNotEquals(reply.getReplierId(), leader.getId().toString());
+        assertNotEquals(reply.getReplierId(), leader.getId().toString());
         Assert.assertTrue(reply.isSuccess());
       } finally {
         deIsolate(cluster, leader.getId());
@@ -402,6 +403,21 @@ public abstract class LeaderElectionTests<CLUSTER extends MiniRaftCluster>
         Assert.assertTrue(reply.isSuccess());
       }
 
+      cluster.shutdown();
+    } catch (Exception e) {
+      fail(e.getMessage());
+    }
+  }
+
+  @Test
+  public void testLearnerInLeaderElection() {
+    try (final MiniRaftCluster cluster = newCluster(3, 1)) {
+      cluster.start();
+      RaftServer.Division leader = waitForLeader(cluster);
+      assertNotNull(leader);
+      for (RaftPeer learner : cluster.getListeners()) {
+        assertNotEquals(learner.getId(), learner.getId());
+      }
       cluster.shutdown();
     } catch (Exception e) {
       fail(e.getMessage());

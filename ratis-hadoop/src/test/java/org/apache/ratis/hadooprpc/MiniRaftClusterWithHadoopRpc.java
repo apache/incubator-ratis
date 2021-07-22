@@ -44,7 +44,7 @@ public class MiniRaftClusterWithHadoopRpc extends MiniRaftCluster.RpcBase {
     }
 
     @Override
-    public MiniRaftClusterWithHadoopRpc newCluster(String[] ids, RaftProperties prop) {
+    public MiniRaftClusterWithHadoopRpc newCluster(String[] ids, String[] idOfListeners, RaftProperties prop) {
       final Configuration conf = new Configuration();
       return newCluster(ids, prop, conf);
     }
@@ -55,10 +55,15 @@ public class MiniRaftClusterWithHadoopRpc extends MiniRaftCluster.RpcBase {
     }
 
     public MiniRaftClusterWithHadoopRpc newCluster(
-        String[] ids, RaftProperties prop, Configuration conf) {
+        String[] ids, String[] idOfLearners, RaftProperties prop, Configuration conf) {
       RaftConfigKeys.Rpc.setType(prop, SupportedRpcType.HADOOP);
       HadoopConfigKeys.Ipc.setAddress(conf, "0.0.0.0:0");
-      return new MiniRaftClusterWithHadoopRpc(ids, prop, conf);
+      return new MiniRaftClusterWithHadoopRpc(ids, idOfLearners, prop, conf);
+    }
+
+    public MiniRaftClusterWithHadoopRpc newCluster(
+        String[] ids, RaftProperties prop, Configuration conf) {
+      return newCluster(ids, new String[]{}, prop, conf);
     }
   }
 
@@ -69,9 +74,9 @@ public class MiniRaftClusterWithHadoopRpc extends MiniRaftCluster.RpcBase {
 
   private final Configuration hadoopConf;
 
-  private MiniRaftClusterWithHadoopRpc(String[] ids, RaftProperties properties,
+  private MiniRaftClusterWithHadoopRpc(String[] ids, String[] idOfLearners, RaftProperties properties,
       Configuration hadoopConf) {
-    super(ids, properties, HadoopFactory.newRaftParameters(hadoopConf));
+    super(ids, idOfLearners, properties, HadoopFactory.newRaftParameters(hadoopConf));
     this.hadoopConf = hadoopConf;
   }
 

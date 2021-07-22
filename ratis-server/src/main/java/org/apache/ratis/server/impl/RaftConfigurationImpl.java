@@ -65,6 +65,10 @@ final class RaftConfigurationImpl implements RaftConfiguration {
       return setConf(new PeerConfiguration(peers));
     }
 
+    Builder setConf(Iterable<RaftPeer> peers, Iterable<RaftPeer> listeners) {
+      return setConf(new PeerConfiguration(peers, listeners));
+    }
+
     Builder setConf(RaftConfigurationImpl transitionalConf) {
       Objects.requireNonNull(transitionalConf);
       Preconditions.assertTrue(transitionalConf.isTransitional());
@@ -188,12 +192,12 @@ final class RaftConfigurationImpl implements RaftConfiguration {
 
   @Override
   public Collection<RaftPeer> getAllPeers() {
-    final Collection<RaftPeer> peers = new ArrayList<>(conf.getPeers());
+    final Collection<RaftPeer> allPeers = new ArrayList<>(conf.getAllPeers());
     if (oldConf != null) {
-      oldConf.getPeers().stream().filter(p -> !peers.contains(p))
-          .forEach(peers::add);
+      oldConf.getAllPeers().stream().filter(p -> !allPeers.contains(p))
+          .forEach(allPeers::add);
     }
-    return peers;
+    return allPeers;
   }
 
   /**

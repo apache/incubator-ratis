@@ -41,7 +41,7 @@ public class MiniRaftClusterWithSimulatedRpc extends MiniRaftCluster {
       = new Factory<MiniRaftClusterWithSimulatedRpc>() {
     @Override
     public MiniRaftClusterWithSimulatedRpc newCluster(
-        String[] ids, RaftProperties prop) {
+        String[] ids, String[] idOfListeners, RaftProperties prop) {
       RaftConfigKeys.Rpc.setType(prop, SimulatedRpc.INSTANCE);
       if (ThreadLocalRandom.current().nextBoolean()) {
         // turn off simulate latency half of the times.
@@ -54,7 +54,7 @@ public class MiniRaftClusterWithSimulatedRpc extends MiniRaftCluster {
           = new SimulatedRequestReply<>(simulateLatencyMs);
       final SimulatedClientRpc client2serverRequestReply
           = new SimulatedClientRpc(simulateLatencyMs);
-      return new MiniRaftClusterWithSimulatedRpc(ids, prop,
+      return new MiniRaftClusterWithSimulatedRpc(ids, idOfListeners, prop,
           serverRequestReply, client2serverRequestReply);
     }
   };
@@ -70,10 +70,10 @@ public class MiniRaftClusterWithSimulatedRpc extends MiniRaftCluster {
   private final SimulatedClientRpc client2serverRequestReply;
 
   private MiniRaftClusterWithSimulatedRpc(
-      String[] ids, RaftProperties properties,
+      String[] ids, String[] idOfListeners, RaftProperties properties,
       SimulatedRequestReply<RaftServerRequest, RaftServerReply> serverRequestReply,
       SimulatedClientRpc client2serverRequestReply) {
-    super(ids, properties,
+    super(ids, idOfListeners, properties,
         SimulatedRpc.Factory.newRaftParameters(serverRequestReply, client2serverRequestReply));
     this.serverRequestReply = serverRequestReply;
     this.client2serverRequestReply = client2serverRequestReply;

@@ -100,7 +100,8 @@ class ServerState implements Closeable {
       throws IOException {
     this.memberId = RaftGroupMemberId.valueOf(id, group.getGroupId());
     this.server = server;
-    final RaftConfigurationImpl initialConf = RaftConfigurationImpl.newBuilder().setConf(group.getPeers()).build();
+    final RaftConfigurationImpl initialConf =
+        RaftConfigurationImpl.newBuilder().setConf(group.getPeers(), group.getListeners()).build();
     configurationManager = new ConfigurationManager(initialConf);
     LOG.info("{}: {}", getMemberId(), configurationManager);
 
