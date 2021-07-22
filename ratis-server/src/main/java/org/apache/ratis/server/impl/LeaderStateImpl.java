@@ -71,6 +71,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -543,6 +544,9 @@ class LeaderStateImpl implements LeaderState {
       return;
     }
 
+    // leader must step down to support leader lease.
+    stepDown(currentTerm, StepDownReason.HIGHER_PRIORITY);
+
     final StartLeaderElectionRequestProto r = ServerProtoUtils.toStartLeaderElectionRequestProto(
         server.getMemberId(), follower, lastEntry);
     CompletableFuture.supplyAsync(() -> {
@@ -908,6 +912,49 @@ class LeaderStateImpl implements LeaderState {
     }
   }
 
+  boolean isLeaderLeaseValid() {
+    if (checkLeaderLease()) {
+      return true;
+    }
+
+    updateLeaderLease();
+    return checkLeaderLease();
+  }
+
+  private boolean checkLeaderLease() {
+    return lastLeaderTimestamp.get().elapsedTimeMs() < server.properties().leaderLeaseTimeoutMs();
+  }
+
+  private void updateLeaderLease() {
+    List<RaftPeerId> activePeers = new ArrayList<>();
+    List<FollowerInfo> followerInfos = getFollowerInfos();
+    List<Timestamp> lastRpcSendTimeWithResponseList = new ArrayList<>();
+    for (final FollowerInfo info : followerInfos) {
+      Timestamp lastRpcSendTimeWithResponse = info.getLastRpcSendTimeWithResponse();
+      lastRpcSendTimeWithResponseList.add(lastRpcSendTimeWithResponse);
+      if (lastRpcSendTimeWithResponse.elapsedTimeMs() <= server.properties().leaderLeaseTimeoutMs()) {
+        activePeers.add(info.getPeer().getId());
+      }
+    }
+
+    final RaftConfigurationImpl conf = server.getRaftConf();
+    if (conf.hasMajority(activePeers, server.getId())) {
+      // leader lease check passed
+      if (lastRpcSendTimeWithResponseList.size() > 0) {
+        Collections.sort(lastRpcSendTimeWithResponseList);
+        Timestamp startLease = lastRpcSendTimeWithResponseList.get(lastRpcSendTimeWithResponseList.size() / 2);
+        lastLeaderTimestamp.set(startLease);
+      } else {
+        lastLeaderTimestamp.set(Timestamp.currentTime());
+      }
+    } else {
+      LOG.warn("{} Can not update leader lease on term: {} lease timeout: {}ms conf: {}",
+          this, currentTerm, server.properties().leaderLeaseTimeoutMs(), conf);
+    }
+  }
+
+  private AtomicReference<Timestamp> lastLeaderTimestamp = new AtomicReference<>(Timestamp.currentTime());
+
   /**
    * See the thesis section 6.2: A leader in Raft steps down
    * if an election timeout elapses without a successful
@@ -941,10 +988,8 @@ class LeaderStateImpl implements LeaderState {
       return true;
     }
 
-    LOG.warn(this + ": Lost leadership on term: " + currentTerm
-        + ". Election timeout: " + server.getMaxTimeoutMs() + "ms"
-        + ". In charge for: " + server.getRole().getRoleElapsedTimeMs() + "ms"
-        + ". Conf: " + conf);
+    LOG.warn("{} Lost leadership on term: {} Election timeout: {}ms. In charge for: {}ms. Conf: {}",
+        this, currentTerm, server.getMaxTimeoutMs(), server.getRole().getRoleElapsedTimeMs(), conf);
     senders.stream().map(LogAppender::getFollower).forEach(f -> LOG.warn("Follower {}", f));
 
     // step down as follower
@@ -1017,6 +1062,12 @@ class LeaderStateImpl implements LeaderState {
   List<RaftPeer> getFollowers() {
     return Collections.unmodifiableList(senders.stream()
         .map(sender -> sender.getFollower().getPeer())
+        .collect(Collectors.toList()));
+  }
+
+  List<FollowerInfo> getFollowerInfos() {
+    return Collections.unmodifiableList(senders.stream()
+        .map(sender -> sender.getFollower())
         .collect(Collectors.toList()));
   }
 

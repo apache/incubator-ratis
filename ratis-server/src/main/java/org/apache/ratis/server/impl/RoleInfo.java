@@ -66,7 +66,8 @@ class RoleInfo {
   }
 
   boolean isLeaderReady() {
-    return getLeaderState().map(LeaderStateImpl::isReady).orElse(false);
+    return getLeaderState().map(LeaderStateImpl::isReady).orElse(false)
+        && getLeaderState().map(LeaderStateImpl::isLeaderLeaseValid).orElse(false);
   }
 
   Optional<LeaderStateImpl> getLeaderState() {

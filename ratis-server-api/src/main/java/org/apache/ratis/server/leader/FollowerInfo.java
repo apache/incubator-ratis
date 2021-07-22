@@ -76,6 +76,10 @@ public interface FollowerInfo {
   /** Update lastRpcSendTime to the current time. */
   void updateLastRpcSendTime();
 
+  void updateLastRpcSendTimeWithResponse(Timestamp time);
+
+  Timestamp getLastRpcSendTimeWithResponse();
+
   /** @return the latest of the lastRpcSendTime and the lastRpcResponseTime . */
   Timestamp getLastRpcTime();
 }

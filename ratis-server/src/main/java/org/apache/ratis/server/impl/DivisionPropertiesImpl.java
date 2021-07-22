@@ -26,6 +26,7 @@ import org.apache.ratis.util.TimeDuration;
 class DivisionPropertiesImpl implements DivisionProperties {
   private final TimeDuration rpcTimeoutMin;
   private final TimeDuration rpcTimeoutMax;
+  private final TimeDuration leaderLeaseTimeout;
   private final TimeDuration rpcSleepTime;
   private final TimeDuration rpcSlownessTimeout;
 
@@ -35,6 +36,11 @@ class DivisionPropertiesImpl implements DivisionProperties {
     Preconditions.assertTrue(rpcTimeoutMax.compareTo(rpcTimeoutMin) >= 0,
         "rpcTimeoutMax = %s < rpcTimeoutMin = %s", rpcTimeoutMax, rpcTimeoutMin);
 
+    double ratio = RaftServerConfigKeys.Rpc.getLeaderLeaseTimeoutRatio(properties) * 1.0 / 100;
+    this.leaderLeaseTimeout = this.rpcTimeoutMin.multiply(ratio);
+    Preconditions.assertTrue(rpcTimeoutMin.compareTo(leaderLeaseTimeout) >= 0,
+        "rpcTimeoutMin = %s < leaderLeaseTimeout = %s", rpcTimeoutMin, leaderLeaseTimeout);
+
     this.rpcSleepTime = RaftServerConfigKeys.Rpc.sleepTime(properties);
     this.rpcSlownessTimeout = RaftServerConfigKeys.Rpc.slownessTimeout(properties);
   }
@@ -42,6 +48,11 @@ class DivisionPropertiesImpl implements DivisionProperties {
   @Override
   public TimeDuration minRpcTimeout() {
     return rpcTimeoutMin;
+  }
+
+  @Override
+  public TimeDuration leaderLeaseTimeout() {
+    return leaderLeaseTimeout;
   }
 
   @Override

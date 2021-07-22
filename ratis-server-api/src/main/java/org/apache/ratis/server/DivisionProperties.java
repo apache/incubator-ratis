@@ -39,6 +39,12 @@ public interface DivisionProperties {
     return minRpcTimeout().toIntExact(TimeUnit.MILLISECONDS);
   }
 
+  TimeDuration leaderLeaseTimeout();
+
+  default int leaderLeaseTimeoutMs() {
+    return leaderLeaseTimeout().toIntExact(TimeUnit.MILLISECONDS);
+  }
+
   /** @return the maximum rpc timeout. */
   TimeDuration maxRpcTimeout();
 

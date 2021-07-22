@@ -484,6 +484,19 @@ public interface RaftServerConfigKeys {
       setTimeDuration(properties::setTimeDuration, TIMEOUT_MIN_KEY, minDuration);
     }
 
+    String LEADER_LEASE_TIMEOUT_RATIO_KEY = PREFIX + ".leader.lease.timeout.ratio";
+    int LEADER_LEASE_TIMEOUT_RATIO_DEFAULT = 90;
+
+    static int getLeaderLeaseTimeoutRatio(RaftProperties properties) {
+      return getInt(properties::getInt, LEADER_LEASE_TIMEOUT_RATIO_KEY,
+          LEADER_LEASE_TIMEOUT_RATIO_DEFAULT, getDefaultLog(),
+          requireMin(0), requireMax(100));
+    }
+
+    static void setLeaderLeaseTimeoutRatio(RaftProperties properties, int ratio) {
+      setInt(properties::setInt, LEADER_LEASE_TIMEOUT_RATIO_KEY, ratio);
+    }
+
     String TIMEOUT_MAX_KEY = PREFIX + ".timeout.max";
     TimeDuration TIMEOUT_MAX_DEFAULT = TimeDuration.valueOf(300, TimeUnit.MILLISECONDS);
     static TimeDuration timeoutMax(RaftProperties properties) {

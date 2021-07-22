@@ -157,6 +157,33 @@ public abstract class LeaderElectionTests<CLUSTER extends MiniRaftCluster>
   }
 
   @Test
+  public void testLeaderLease() throws Exception {
+    TimeDuration rpcTimeoutMin = RaftServerConfigKeys.Rpc.timeoutMin(getProperties());
+    double ratio = RaftServerConfigKeys.Rpc.getLeaderLeaseTimeoutRatio(getProperties()) * 1.0 / 100;
+    TimeDuration leaderLeaseTimeout = rpcTimeoutMin.multiply(ratio);
+
+    try (final MiniRaftCluster cluster = newCluster(3)) {
+      cluster.start();
+
+      final RaftServer.Division leader = waitForLeader(cluster);
+      try (RaftClient client = cluster.createClient(leader.getId())) {
+        client.io().send(new RaftTestUtil.SimpleMessage("message"));
+
+        Assert.assertTrue(leader.getInfo().isLeader());
+        Assert.assertTrue(leader.getInfo().isLeaderReady());
+
+        isolate(cluster, leader.getId());
+        Thread.sleep(leaderLeaseTimeout.toLong(TimeUnit.MILLISECONDS));
+
+        Assert.assertTrue(leader.getInfo().isLeader());
+        Assert.assertFalse(leader.getInfo().isLeaderReady());
+      }
+
+      cluster.shutdown();
+    }
+  }
+
+  @Test
   public void testTransferLeaderTimeout() throws Exception {
     try(final MiniRaftCluster cluster = newCluster(3)) {
       cluster.start();
