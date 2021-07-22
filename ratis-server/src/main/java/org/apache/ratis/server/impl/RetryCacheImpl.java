@@ -181,13 +181,11 @@ class RetryCacheImpl implements RetryCache {
   }
 
   CacheEntry getOrCreateEntry(ClientInvocationId key) {
-    final CacheEntry entry;
     try {
-      entry = cache.get(key, () -> new CacheEntry(key));
+      return cache.get(key, () -> new CacheEntry(key));
     } catch (ExecutionException e) {
       throw new IllegalStateException(e);
     }
-    return entry;
   }
 
   CacheEntry refreshEntry(CacheEntry newEntry) {

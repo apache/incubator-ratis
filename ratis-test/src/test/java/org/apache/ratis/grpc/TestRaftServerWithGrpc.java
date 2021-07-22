@@ -30,7 +30,8 @@ import com.codahale.metrics.Gauge;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.apache.log4j.Level;
 import org.apache.ratis.BaseTest;
-import org.apache.ratis.protocol.RaftGroup;
+import org.apache.ratis.protocol.*;
+import org.apache.ratis.protocol.exceptions.StreamException;
 import org.apache.ratis.server.impl.MiniRaftCluster;
 import org.apache.ratis.RaftTestUtil;
 import org.apache.ratis.RaftTestUtil.SimpleMessage;
@@ -44,9 +45,6 @@ import org.apache.ratis.grpc.client.GrpcClientProtocolService;
 import org.apache.ratis.proto.RaftProtos;
 import org.apache.ratis.proto.RaftProtos.RaftPeerRole;
 import org.apache.ratis.protocol.exceptions.AlreadyClosedException;
-import org.apache.ratis.protocol.RaftClientReply;
-import org.apache.ratis.protocol.RaftClientRequest;
-import org.apache.ratis.protocol.RaftPeerId;
 import org.apache.ratis.protocol.exceptions.TimeoutIOException;
 import org.apache.ratis.retry.RetryPolicies;
 import org.apache.ratis.server.RaftServer;
@@ -74,6 +72,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 
 public class TestRaftServerWithGrpc extends BaseTest implements MiniRaftClusterWithGrpc.FactoryGet {
   {
@@ -311,9 +310,50 @@ public class TestRaftServerWithGrpc extends BaseTest implements MiniRaftClusterW
     }
   }
 
+  @Test
+  public void TestStreamEndOfRequestAsync() throws Exception {
+    runWithNewCluster(1, this::runTestStreamEndOfRequestAsync);
+  }
+
+  void runTestStreamEndOfRequestAsync(MiniRaftClusterWithGrpc cluster) throws Exception {
+    final RaftServer.Division leader = RaftTestUtil.waitForLeader(cluster);
+    final RaftPeerId leaderId = leader.getId();
+    final RaftGroupId leaderGroupId = leader.getGroup().getGroupId();
+    final RaftClient client = cluster.createClient();
+    final AtomicLong seqNum = new AtomicLong();
+    final RaftClientRequest clientRequest = newRaftClientRequest(client, leaderId, seqNum.incrementAndGet(),
+            RaftClientRequest.messageStreamRequestType(12, 12, true));
+
+    // Leader completes exceptionally, because there is no such stream
+    // Creating realistic stream is complex, since streams are created by clients, but
+    // this function tests server functionality.
+    CompletableFuture<RaftClientRequest> fRequest = RaftServerTestUtil.streamEndOfRequestAsync(leader, clientRequest);
+    Assert.assertNotNull(fRequest);
+    Assert.assertTrue(fRequest.isCompletedExceptionally());
+    fRequest.exceptionally(e -> {
+      Assert.assertSame(e.getCause().getClass(), StreamException.class);
+      return clientRequest;
+    });
+
+    // On non leader, request should fail because only leaders handle this kind of requests
+    RaftServer server = cluster.putNewServer(RaftPeerId.getRaftPeerId("Server 21"), leader.getGroup(), false);
+    fRequest = RaftServerTestUtil.streamEndOfRequestAsync(server.getDivision(leaderGroupId), clientRequest);
+    Assert.assertNotNull(fRequest);
+    Assert.assertTrue(fRequest.isCompletedExceptionally());
+    fRequest.exceptionally(e -> {
+      Assert.assertSame(e.getCause().getClass(), Exception.class);
+      return clientRequest;
+    });
+  }
+
   static RaftClientRequest newRaftClientRequest(RaftClient client, RaftPeerId serverId, long seqNum) {
+    return newRaftClientRequest(client, serverId, seqNum, RaftClientRequest.writeRequestType());
+  }
+
+  static RaftClientRequest newRaftClientRequest(RaftClient client, RaftPeerId serverId, long seqNum,
+                                                RaftClientRequest.Type type) {
     final SimpleMessage m = new SimpleMessage("m" + seqNum);
     return RaftClientTestUtil.newRaftClientRequest(client, serverId, seqNum, m,
-        RaftClientRequest.writeRequestType(), ProtoUtils.toSlidingWindowEntry(seqNum, seqNum == 1L));
+            type, ProtoUtils.toSlidingWindowEntry(seqNum, seqNum == 1L));
   }
 }

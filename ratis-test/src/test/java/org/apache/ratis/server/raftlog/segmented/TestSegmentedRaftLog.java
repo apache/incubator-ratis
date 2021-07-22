@@ -24,9 +24,7 @@ import org.apache.ratis.BaseTest;
 import org.apache.ratis.RaftTestUtil.SimpleOperation;
 import org.apache.ratis.conf.RaftProperties;
 import org.apache.ratis.metrics.RatisMetricRegistry;
-import org.apache.ratis.protocol.RaftGroupId;
-import org.apache.ratis.protocol.RaftGroupMemberId;
-import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.*;
 import org.apache.ratis.protocol.exceptions.TimeoutIOException;
 import org.apache.ratis.server.RaftServerConfigKeys;
 import org.apache.ratis.server.impl.RetryCacheTestUtil;
@@ -634,6 +632,29 @@ public class TestSegmentedRaftLog extends BaseTest {
     Assert.assertNotNull(ex);
     Assert.assertSame(LifeCycle.State.PAUSED, sm.getLifeCycleState());
     throw ex;
+  }
+
+  /**
+   * Verifies that getOrCreateEntry function creates cache entry in every case and does not return null.
+   */
+  @Test
+  public void testGetOrCreateEntry() {
+    final RetryCache retryCache = RetryCacheTestUtil.createRetryCache();
+    final ClientId clientId = ClientId.randomId();
+    final long invocationId1 = 123456789;
+    final ClientInvocationId clientInvocationId1 = ClientInvocationId.valueOf(clientId, invocationId1);
+    RetryCache.Entry cacheEntry1 = RetryCacheTestUtil.getOrCreateEntry(retryCache, clientInvocationId1);
+    Assert.assertNotNull(cacheEntry1);
+
+    RetryCache.Entry cacheEntry1Again = RetryCacheTestUtil.getOrCreateEntry(retryCache, clientInvocationId1);
+    Assert.assertEquals(cacheEntry1.toString(), cacheEntry1Again.toString());
+
+    final long invocationId2 = 987654321;
+    final ClientInvocationId clientInvocationId2 = ClientInvocationId.valueOf(clientId, invocationId2);
+    RetryCache.Entry cacheEntry2 = RetryCacheTestUtil.getOrCreateEntry(retryCache, clientInvocationId2);
+    Assert.assertNotNull(cacheEntry2);
+
+    Assert.assertNotEquals(cacheEntry1.toString(), cacheEntry2.toString());
   }
 
   static Thread startAppendEntryThread(RaftLog raftLog, LogEntryProto entry) {

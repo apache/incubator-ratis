@@ -20,10 +20,7 @@ package org.apache.ratis.server.impl;
 import org.apache.log4j.Level;
 import org.apache.ratis.RaftTestUtil;
 import org.apache.ratis.conf.RaftProperties;
-import org.apache.ratis.protocol.RaftGroupId;
-import org.apache.ratis.protocol.RaftGroupMemberId;
-import org.apache.ratis.protocol.RaftPeer;
-import org.apache.ratis.protocol.RaftPeerId;
+import org.apache.ratis.protocol.*;
 import org.apache.ratis.server.DataStreamMap;
 import org.apache.ratis.server.DataStreamServer;
 import org.apache.ratis.server.DivisionInfo;
@@ -44,6 +41,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Stream;
 
 public class RaftServerTestUtil {
@@ -154,6 +152,10 @@ public class RaftServerTestUtil {
 
   public static DataStreamMap newDataStreamMap(Object name) {
     return new DataStreamMapImpl(name);
+  }
+
+  public static CompletableFuture<RaftClientRequest> streamEndOfRequestAsync(RaftServer.Division server, RaftClientRequest request) {
+    return ((RaftServerImpl)server).streamEndOfRequestAsync(request);
   }
 
   public static void assertLostMajorityHeartbeatsRecently(RaftServer.Division leader) {

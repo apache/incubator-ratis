@@ -59,11 +59,15 @@ public class RetryCacheTestUtil {
     }
   }
 
-  public static void getOrCreateEntry(RaftServer.Division server, ClientInvocationId invocationId) {
-    getOrCreateEntry(server.getRetryCache(), invocationId);
+  public static RetryCache.Entry getOrCreateEntry(RaftServer.Division server, ClientInvocationId invocationId) {
+    return getOrCreateEntryImpl(server.getRetryCache(), invocationId);
   }
 
-  private static RetryCache.Entry getOrCreateEntry(RetryCache cache, ClientInvocationId invocationId) {
+  public static RetryCache.Entry getOrCreateEntry(RetryCache retryCache, ClientInvocationId invocationId) {
+    return getOrCreateEntryImpl(retryCache, invocationId);
+  }
+
+  private static RetryCache.Entry getOrCreateEntryImpl(RetryCache cache, ClientInvocationId invocationId) {
     return ((RetryCacheImpl)cache).getOrCreateEntry(invocationId);
   }
 
