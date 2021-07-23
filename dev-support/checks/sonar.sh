@@ -20,4 +20,7 @@ if [ ! "$SONAR_TOKEN" ]; then
   echo "SONAR_TOKEN environment variable should be set"
   exit 1
 fi
-mvn -B verify -DskipShade -DskipTests org.sonarsource.scanner.maven:sonar-maven-plugin:3.6.0.1398:sonar -Dsonar.host.url=https://sonarcloud.io -Dsonar.organization=apache -Dsonar.projectKey=apache-ratis
+mvn -B verify -DskipShade -DskipTests org.sonarsource.scanner.maven:sonar-maven-plugin:3.6.0.1398:sonar \
+-Dsonar.host.url=https://sonarcloud.io \
+-Dsonar.coverage.jacoco.xmlReportPaths=$(find "$(pwd)" -path '*jacoco.xml' | tr '\n' ',') \
+-Dsonar.organization=apache -Dsonar.projectKey=apache-ratis

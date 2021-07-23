@@ -275,6 +275,10 @@ public interface ConfUtils {
 
   static void printField(Class<?> confClass, Consumer<Object> out, Field f) {
     final int modifiers = f.getModifiers();
+    // Ignore synthetic fields. Required by JaCoCo coverity reports
+    if (f.isSynthetic()) {
+      return;
+    }
     if (!Modifier.isStatic(modifiers)) {
       throw new IllegalStateException("Found non-static field " + f);
     }

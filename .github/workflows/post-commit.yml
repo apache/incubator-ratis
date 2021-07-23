@@ -114,6 +114,47 @@ jobs:
         - name: Delete temporary build artifacts
           run: rm -rf ~/.m2/repository/org/apache/ratis
           if: always()
+  coverity:
+    name: coverity
+    runs-on: ubuntu-18.04
+    if: (github.repository == 'apache/ratis' || github.repository == 'apache/incubator-ratis') && github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        profile:
+          - grpc
+          - server
+          - misc
+    steps:
+      - uses: actions/checkout@master
+      - name: Cache for maven dependencies
+        uses: actions/cache@v2
+        with:
+          path: ~/.m2/repository
+          key: maven-repo-${{ hashFiles('**/pom.xml') }}-${{ github.job }}
+          restore-keys: |
+            maven-repo-${{ hashFiles('**/pom.xml') }}
+            maven-repo-
+      - run: >-
+          ./dev-support/checks/unit.sh -P${{ matrix.profile }}-tests
+          -Dmaven.test.failure.ignore=true
+          -Djacoco.skip=false
+          -Dsurefire.rerunFailingTestsCount=3
+        continue-on-error: true
+      - name: Merge JaCoCo results
+        run: mvn -DskipTests -Djacoco.skip=false verify
+      - name: Copy JaCoCo XML report to artifacts
+        run: cp ./ratis-coverage/target/site/jacoco-aggregate/jacoco.xml ./target/unit
+      - name: Summary of failures
+        run: cat target/unit/summary.txt
+        if: ${{ !cancelled() }}
+      - uses: actions/upload-artifact@master
+        if: ${{ !cancelled() }}
+        with:
+          name: coverity-${{ matrix.profile }}
+          path: target/unit
+      - name: Delete temporary build artifacts
+        run: rm -rf ~/.m2/repository/org/apache/ratis
+        if: always()
   checkstyle:
     name: checkstyle
     runs-on: ubuntu-18.04
@@ -161,9 +202,12 @@ jobs:
   sonar:
     name: sonar
     runs-on: ubuntu-18.04
+    needs: [coverity]
     if: (github.repository == 'apache/ratis' || github.repository == 'apache/incubator-ratis') && github.event_name != 'pull_request'
     steps:
-        - uses: actions/checkout@master
+        - uses: actions/checkout@v2
+          with:
+            fetch-depth: 0
         - name: Cache for maven dependencies
           uses: actions/cache@v2
           with:
@@ -172,6 +216,9 @@ jobs:
             restore-keys: |
               maven-repo-${{ hashFiles('**/pom.xml') }}
               maven-repo-
+        - name: Download test artifacts for coverity analysis
+          uses: actions/download-artifact@v2
+          if: always()
         - name: Setup java 11
           uses: actions/setup-java@v1
           with:
