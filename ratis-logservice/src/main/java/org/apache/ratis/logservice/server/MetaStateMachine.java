@@ -325,6 +325,8 @@ public class MetaStateMachine extends BaseStateMachine {
                 });
                 int provisionedPeers = 0;
                 Exception originalException = null;
+                // here 'peers', not List of the currently known all peers.
+                Collection<RaftPeer> peers = raftGroup.getPeers();
                 for (RaftPeer peer : peers) {
                     try (RaftClient client = RaftClient.newBuilder().setProperties(properties)
                         .setRaftGroup(RaftGroup.valueOf(logServerGroupId, peer)).build()) {
